@@ -4,6 +4,30 @@
 
 > 本仓库是基于 [Allhuo/memos-cloudflare](https://github.com/Allhuo/memos-cloudflare) 的独立维护分支，不是 Memos 官方项目。保留上游许可证和 Git 历史。基线为上游提交 `2206732987025e4d988e5a091deb825c0013c8fa`，原前端对应 Memos v0.29.1。
 
+## 文档入口
+
+| 你要做什么 | 阅读文档 |
+| --- | --- |
+| 日常记录、传图、标签、搜索、整理和备份 | **[中文使用手册](docs/USER_GUIDE.md)** |
+| 让 Hermes 主动配置账号资源、部署并验收 | **[Hermes 主动部署任务书](docs/HERMES_DEPLOY.md)** |
+| 自己操作 Cloudflare 部署 | [人工部署说明](docs/DEPLOY.md) |
+| 下载原图、校验备份、规划整站恢复 | [备份与迁移说明](docs/BACKUP.md) |
+| AI 进入项目时的约定 | [AGENTS.md](AGENTS.md) |
+
+可以直接把这段发给已有部署权限的 Hermes：
+
+```text
+请部署 https://github.com/lanchenglin/memos-cloudflare 。
+先读 AGENTS.md，再完整读 docs/HERMES_DEPLOY.md，按任务书主动配置并部署。
+使用现有授权的 Cloudflare、终端和浏览器权限，采用单 Worker + D1 + 私有 R2。
+先检查已有资源、账号和配置，保留数据与密钥；缺少的再创建，不要只给方案。
+有明确域名就绑定；没有时先交付实际 workers.dev 地址，不接管其他站点。
+完成管理员初始化、真实图文验收和首次图文备份校验，凭据只安全保存到本机或密码管理器。
+最后给我访问地址、用户名、密码安全保存位置、部署版本、逐项验收结果和具体待办。
+```
+
+这份任务书不会自动授予 Cloudflare 权限；Hermes 需要已有有效账号授权。它包含新部署、重复执行、旧实例升级、密钥保管、失败处理和回滚规则。仓库文档更新不代表已经完成生产部署。
+
 ## 这一版可以做什么
 
 | 场景 | 已实现 |
