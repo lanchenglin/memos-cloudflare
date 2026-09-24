@@ -3,6 +3,7 @@
 // 其余方法 → "required"
 
 import type { Env } from "../../types";
+import { validatePassword, verifySetupKey, limitAuth } from "../../security";
 import { rpc, type RpcContext } from "../router";
 import { invalidArgument, notFound, permissionDenied, unauthenticated, toTimestamp, ConnectError } from "../connect";
 import { generatePatToken, sha256hex, type AuthContext } from "../auth";
@@ -126,19 +127,21 @@ rpc("UserService", "ListUsers", "required", async (req, ctx) => {
 rpc("UserService", "CreateUser", "optional", async (req, ctx) => {
   const user = req.user ?? {};
   const username = validateUsername(user.username);
-  if (typeof user.password !== "string" || user.password.length === 0) throw invalidArgument("password is required");
+  validatePassword(user.password);
 
   const countRow = await ctx.env.DB.prepare("SELECT COUNT(*) AS c FROM user").first<{ c: number }>();
   const isFirstUser = (countRow?.c ?? 0) === 0;
 
   let role = "USER";
   if (isFirstUser) {
+    await limitAuth(ctx.env, ctx.req, "setup");
+    await verifySetupKey(ctx.env, ctx.req);
     role = "ADMIN";
   } else if (isAdmin(ctx.auth)) {
     if (user.role === "ADMIN" || user.role === "USER") role = user.role;
   } else {
     const general = await getInstanceGeneralSetting(ctx.env);
-    if (general.disallowUserRegistration) throw permissionDenied("user registration is not allowed");
+    if (general.disallowUserRegistration !== false) throw permissionDenied("user registration is not allowed");
     if (general.disallowPasswordAuth) throw permissionDenied("password authentication is not allowed");
   }
 
@@ -165,12 +168,11 @@ rpc("UserService", "CreateUser", "optional", async (req, ctx) => {
   }
 
   const passwordHash = await hashPassword(user.password);
-  await ctx.env.DB.prepare(
+  const inserted = await ctx.env.DB.prepare(
     `INSERT INTO user (created_ts, updated_ts, row_status, username, role, email, nickname, password_hash, avatar_url, description)
-     VALUES (?, ?, 'NORMAL', ?, ?, ?, ?, ?, '', '')`,
-  )
-    .bind(now, now, username, role, email, nickname, passwordHash)
-    .run();
+     SELECT ?, ?, 'NORMAL', ?, ?, ?, ?, ?, '', '' ${isFirstUser ? "WHERE NOT EXISTS (SELECT 1 FROM user)" : ""}`,
+  ).bind(now, now, username, role, email, nickname, passwordHash).run();
+  if (inserted.meta.changes !== 1) throw new ConnectError("already_exists", "实例已经初始化，请登录");
 
   const created = await getUserByUsername(ctx.env, username);
   if (!created) throw new ConnectError("internal", "failed to create user");
@@ -205,7 +207,7 @@ rpc("UserService", "UpdateUser", "required", async (req, ctx) => {
         break;
       }
       case "password": {
-        if (typeof user.password !== "string" || user.password.length === 0) throw invalidArgument("password is required");
+        validatePassword(user.password);
         sets.push("password_hash = ?");
         params.push(await hashPassword(user.password));
         break;
@@ -250,9 +252,14 @@ rpc("UserService", "UpdateUser", "required", async (req, ctx) => {
   const now = Math.floor(Date.now() / 1000);
   sets.push("updated_ts = ?");
   params.push(now);
-  await ctx.env.DB.prepare(`UPDATE user SET ${sets.join(", ")} WHERE id = ?`)
-    .bind(...params, target.id)
-    .run();
+  const changingPassword = paths.includes("password");
+  if (changingPassword) sets.push("auth_version = auth_version + 1");
+  const statements = [ctx.env.DB.prepare(`UPDATE user SET ${sets.join(", ")} WHERE id = ?`).bind(...params, target.id)];
+  if (changingPassword) {
+    statements.push(ctx.env.DB.prepare("DELETE FROM refresh_token WHERE user_id = ?").bind(target.id));
+    statements.push(ctx.env.DB.prepare("DELETE FROM personal_access_token WHERE user_id = ?").bind(target.id));
+  }
+  await ctx.env.DB.batch(statements);
 
   const updated = await ctx.env.DB.prepare("SELECT * FROM user WHERE id = ?").bind(target.id).first<UserRow>();
   if (!updated) throw new ConnectError("internal", "failed to update user");
@@ -352,7 +359,7 @@ rpc("UserService", "ListAllUserStats", "optional", async (_req, ctx) => {
 
 // ---------- UserSetting（user_setting 表 key=GENERAL/WEBHOOKS）----------
 
-const DEFAULT_GENERAL_SETTING = { locale: "en", memoVisibility: "PRIVATE", theme: "" };
+const DEFAULT_GENERAL_SETTING = { locale: "zh-Hans", memoVisibility: "PRIVATE", theme: "" };
 
 const getUserSettingValue = async (env: Env, userId: number, key: string): Promise<Record<string, any> | null> => {
   const row = await env.DB.prepare("SELECT value FROM user_setting WHERE user_id = ? AND key = ?")

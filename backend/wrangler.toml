@@ -1,36 +1,37 @@
 name = "memos-cloudflare"
 main = "src/index.ts"
-compatibility_date = "2024-06-01"
-
+compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-LOG_LEVEL = "info"
-# 留空则 instanceUrl 回退为请求 origin（单 Worker 同源部署推荐留空）
 BASE_URL = ""
+UPLOAD_LIMIT_MB = "10"
 
-# Secrets - set via wrangler secret put
-# JWT_SECRET
-# ALLOWED_ORIGINS  
-# R2_ACCESS_KEY_ID
-# R2_SECRET_ACCESS_KEY
-
-# 单 Worker 同源部署：Worker 同时托管前端静态资源与 API
 [assets]
 directory = "../frontend/dist"
 binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"
 database_name = "memos"
-database_id = "b14d1661-a470-4fbd-bb71-f8600340ab54"
+# Replace with YOUR database ID from `npx wrangler d1 create memos`.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "memos-assets"
 
-[env.staging]
-name = "memos-cloudflare-staging"
+[triggers]
+crons = ["15 19 * * *"]
 
-[env.production]
-name = "memos-cloudflare-production" 
+# Optional custom domain. The zone must be managed in your Cloudflare account.
+# [[routes]]
+# pattern = "notes.example.com"
+# custom_domain = true
+
+# Required secrets, never commit values:
+# npx wrangler secret put JWT_SECRET
+# npx wrangler secret put SETUP_KEY

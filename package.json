@@ -1,0 +1,17 @@
+{
+  "name": "memos-cloudflare-personal",
+  "version": "0.3.0",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "setup": "npm ci --prefix backend && npm ci --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "check": "npm run type-check --prefix backend && npm run type-check --prefix frontend",
+    "test": "npm test --prefix backend && npm test --prefix frontend && python3 -m unittest discover -s scripts/tests",
+    "test:browser": "npm run test:browser --prefix backend",
+    "preview": "npm run dev --prefix backend",
+    "deploy": "npm run build && npm run deploy --prefix backend"
+  }
+}

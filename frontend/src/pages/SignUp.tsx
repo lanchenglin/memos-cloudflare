@@ -25,12 +25,14 @@ const SignUp = () => {
   const actionBtnLoadingState = useLoading(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [setupKey, setSetupKey] = useState("");
   const { initialize: initAuth } = useAuth();
   const { generalSetting: instanceGeneralSetting, profile, initialize: initInstance } = useInstance();
   const [searchParams] = useSearchParams();
   const redirectTarget = getSafeRedirectPath(searchParams.get(AUTH_REDIRECT_PARAM));
   const signInPath = searchParams.toString() ? `${ROUTES.AUTH}?${searchParams.toString()}` : ROUTES.AUTH;
-  const canUsePasswordSignUp = !instanceGeneralSetting.disallowUserRegistration && !instanceGeneralSetting.disallowPasswordAuth;
+  const needsSetup = !profile.admin;
+  const canUsePasswordSignUp = needsSetup || (!instanceGeneralSetting.disallowUserRegistration && !instanceGeneralSetting.disallowPasswordAuth);
 
   const handleUsernameInputChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value as string;
@@ -63,7 +65,8 @@ const SignUp = () => {
         password,
         role: User_Role.USER,
       });
-      await userServiceClient.createUser({ user });
+      await userServiceClient.createUser({ user }, needsSetup ? { headers: { "X-Setup-Key": setupKey } } : undefined);
+      setSetupKey("");
       const response = await authServiceClient.signIn({
         credentials: {
           case: "passwordCredentials",
@@ -99,6 +102,12 @@ const SignUp = () => {
             <p className="w-full text-2xl mt-2 text-muted-foreground">{t("auth.create-your-account")}</p>
             <form className="w-full mt-2" onSubmit={handleFormSubmit}>
               <div className="flex flex-col justify-start items-start w-full gap-4">
+                {needsSetup && <label className="w-full text-sm text-muted-foreground">
+                  初始化密钥（Worker 的 SETUP_KEY）
+                  <Input type="password" className="mt-2" value={setupKey} onChange={e => setSetupKey(e.target.value)}
+                    autoComplete="off" minLength={32} maxLength={256} required />
+                  <span className="block mt-2">仅首次创建管理员时需要，不会保存在浏览器中。</span>
+                </label>}
                 <div className="w-full flex flex-col justify-start items-start">
                   <span className="leading-8 text-muted-foreground">{t("common.username")}</span>
                   <Input
@@ -120,9 +129,11 @@ const SignUp = () => {
                     className="w-full bg-background h-10"
                     type="password"
                     readOnly={actionBtnLoadingState.isLoading}
-                    placeholder={t("common.password")}
+                    placeholder="至少 12 个字符的独立长密码"
                     value={password}
                     autoComplete="new-password"
+                    minLength={12}
+                    maxLength={128}
                     autoCapitalize="off"
                     spellCheck={false}
                     onChange={handlePasswordInputChanged}
@@ -131,7 +142,7 @@ const SignUp = () => {
                 </div>
               </div>
               <div className="flex flex-row justify-end items-center w-full mt-6">
-                <Button type="submit" className="w-full h-10" disabled={actionBtnLoadingState.isLoading} onClick={handleSignUpButtonClick}>
+                <Button type="submit" className="w-full h-10" disabled={actionBtnLoadingState.isLoading}>
                   {t("common.sign-up")}
                   {actionBtnLoadingState.isLoading && <LoaderIcon className="w-5 h-auto ml-2 animate-spin opacity-60" />}
                 </Button>

@@ -6,7 +6,7 @@ import type { Env } from "../types";
 //   经 HttpOnly cookie "memos_refresh" 传输，对照 D1 refresh_token 表校验（可吊销）
 // - 轮换：先插新、后标记旧（rotated_ts），旧 token 有 60s 宽限期以容忍多标签页并发刷新
 // - PAT: "memos_pat_" 前缀，存 SHA-256，同走 Authorization: Bearer
-// 注意：Pages 前端与 Worker 后端跨站部署时，cookie 必须 SameSite=None; Secure。
+// 注意：Pages 前端与 Worker 后端跨站部署时，cookie 必须 SameSite=Strict; Secure。
 
 export const ACCESS_TOKEN_DURATION_SEC = 15 * 60;
 export const REFRESH_TOKEN_DURATION_SEC = 30 * 24 * 60 * 60;
@@ -54,23 +54,22 @@ const signJwt = async (claims: Record<string, unknown>, secret: string): Promise
 };
 
 const verifyJwt = async (token: string, secret: string): Promise<Record<string, any> | null> => {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const data = `${parts[0]}.${parts[1]}`;
-  const valid = await crypto.subtle.verify(
-    "HMAC",
-    await hmacKey(secret),
-    b64urlDecode(parts[2]) as unknown as ArrayBuffer,
-    new TextEncoder().encode(data),
-  );
-  if (!valid) return null;
   try {
+    if (!secret || secret.length < 32 || token.length > 8192) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[0])));
+    if (header.alg !== "HS256" || header.typ !== "JWT") return null;
+    const valid = await crypto.subtle.verify("HMAC", await hmacKey(secret),
+      b64urlDecode(parts[2]) as unknown as ArrayBuffer,
+      new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
+    if (!valid) return null;
     const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
-    if (claims.exp && claims.exp < Math.floor(Date.now() / 1000)) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(claims.exp) || claims.exp <= now || claims.iss !== ISSUER) return null;
+    if (!Number.isSafeInteger(Number(claims.sub)) || Number(claims.sub) <= 0) return null;
     return claims;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 };
 
 // ---------- Token 生成 ----------
@@ -80,6 +79,7 @@ export interface AccessTokenUser {
   username: string;
   role: string;
   row_status: string;
+  auth_version?: number;
 }
 
 export const generateAccessToken = async (user: AccessTokenUser, secret: string) => {
@@ -88,6 +88,7 @@ export const generateAccessToken = async (user: AccessTokenUser, secret: string)
   const token = await signJwt(
     {
       type: "access",
+      authVersion: user.auth_version ?? 0,
       role: user.role,
       status: user.row_status,
       username: user.username,
@@ -173,18 +174,36 @@ export const revokeSessionByToken = async (env: Env, refreshToken: string): Prom
 
 export const buildRefreshCookie = (token: string, expiresAtSec: number): string => {
   const expires = new Date(expiresAtSec * 1000).toUTCString();
-  // 跨站部署（Pages ↔ Worker 不同域）必须 SameSite=None; Secure
-  return `${REFRESH_TOKEN_COOKIE}=${token}; Path=/; Expires=${expires}; HttpOnly; Secure; SameSite=None`;
+  // 跨站部署（Pages ↔ Worker 不同域）必须 SameSite=Strict; Secure
+  return `${REFRESH_TOKEN_COOKIE}=${token}; Path=/; Expires=${expires}; HttpOnly; Secure; SameSite=Strict`;
 };
 
 export const buildClearRefreshCookie = (): string =>
-  `${REFRESH_TOKEN_COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=None`;
+  `${REFRESH_TOKEN_COOKIE}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; Secure; SameSite=Strict`;
 
 export const extractRefreshToken = (req: Request): string | null => {
-  const cookie = req.headers.get("Cookie") || "";
-  const match = cookie.match(new RegExp(`(?:^|;\\s*)${REFRESH_TOKEN_COOKIE}=([^;]+)`));
-  return match ? match[1] : null;
+  const prefix = `${REFRESH_TOKEN_COOKIE}=`;
+  const value = (req.headers.get("Cookie") || "").split(";").map(s => s.trim()).find(s => s.startsWith(prefix));
+  return value ? value.slice(prefix.length) : null;
 };
+
+/** Read-only media auth: browsers do not attach Bearer headers to <img> requests.
+ * Validate the HttpOnly refresh session in D1 without rotating it for each image.
+ * Never use this cookie fallback for mutation/RPC endpoints. */
+export async function authenticateMedia(req: Request, env: Env): Promise<AuthContext | null> {
+  if (req.headers.has("Authorization")) return authenticate(req, env);
+  const token = extractRefreshToken(req);
+  if (!token) return null;
+  const claims = await verifyJwt(token, env.JWT_SECRET);
+  if (!claims || claims.type !== "refresh" || !claims.tid || !Array.isArray(claims.aud) || !claims.aud.includes(REFRESH_AUDIENCE)) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(`SELECT u.id, u.username, u.role FROM refresh_token t JOIN user u ON u.id = t.user_id
+    WHERE t.token_id = ? AND t.user_id = ? AND t.expires_ts > ? AND u.row_status = 'NORMAL'
+    AND (t.rotated_ts IS NULL OR t.rotated_ts >= ?)`)
+    .bind(claims.tid, Number(claims.sub), now, now - ROTATION_GRACE_SEC)
+    .first<{id: number; username: string; role: string}>();
+  return row ? {userId: row.id, username: row.username, role: row.role} : null;
+}
 
 // ---------- 请求鉴权（access JWT 或 PAT）----------
 
@@ -218,8 +237,11 @@ export const authenticate = async (req: Request, env: Env): Promise<AuthContext 
   const claims = await verifyJwt(token, env.JWT_SECRET);
   if (!claims || !claims.sub) return null;
   const aud: string[] = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-  if (!aud.includes(ACCESS_AUDIENCE)) return null;
-  return { userId: Number(claims.sub), username: claims.username || claims.name || "", role: claims.role || "USER" };
+  if (!aud.includes(ACCESS_AUDIENCE) || claims.type !== "access") return null;
+  const user = await env.DB.prepare("SELECT id, username, role, auth_version FROM user WHERE id = ? AND row_status = 'NORMAL'")
+    .bind(Number(claims.sub)).first<{id: number; username: string; role: string; auth_version: number}>();
+  if (!user || user.auth_version !== (claims.authVersion ?? 0)) return null;
+  return { userId: user.id, username: user.username, role: user.role };
 };
 
 export const generatePatToken = (): string => {

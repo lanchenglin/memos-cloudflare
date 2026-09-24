@@ -1,6 +1,7 @@
 // AuthService — 对齐上游 memos v0.29 auth_service.go 语义(见规格书 §2.4 / §3)。
 // SignIn / SignOut / RefreshToken / GetCurrentUser。
 import type { Env } from "../../types";
+import { limitAuth } from "../../security";
 import { rpc } from "../router";
 import { ConnectError, invalidArgument, notFound, permissionDenied, toTimestamp, unauthenticated } from "../connect";
 import {
@@ -57,7 +58,11 @@ const signInWithPassword = async (
   credentials: PasswordCredentials,
   ctx: { env: Env; req: Request; responseHeaders: Headers },
 ): Promise<Record<string, unknown>> => {
+  await limitAuth(ctx.env, ctx.req, "signin");
   const { username, password } = credentials;
+  if (typeof username !== "string" || typeof password !== "string" || username.length > 128 || password.length > 128) {
+    throw invalidArgument("unmatched username and password");
+  }
   // 失败统一文案,防用户名枚举
   const failed = () => invalidArgument("unmatched username and password");
   if (!username || !password) throw failed();

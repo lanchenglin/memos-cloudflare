@@ -37,18 +37,18 @@ const defaultSettingValue = (key: SettingKey): Record<string, any> => {
   switch (key) {
     case "GENERAL":
       return {
-        disallowUserRegistration: false,
+        disallowUserRegistration: true,
         disallowPasswordAuth: false,
         additionalScript: "",
         additionalStyle: "",
-        customProfile: { title: "Memos", description: "", logoUrl: "" },
+        customProfile: { title: "随手记", description: "先记录，后整理", logoUrl: "" },
         weekStartDayOffset: 0,
         disallowChangeUsername: false,
         disallowChangeNickname: false,
       };
     case "MEMO_RELATED":
       return {
-        contentLengthLimit: 8192,
+        contentLengthLimit: 32768,
         enableDoubleClickEdit: true,
         reactions: ["👍", "👎", "❤️", "🎉", "😄", "😢", "😮", "🙏"],
       };

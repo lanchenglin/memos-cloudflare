@@ -19,18 +19,18 @@ export const parseChildName = (name: string, child: string): { username: string;
   return m ? { username: m[1], id: m[2] } : null;
 };
 
-export const UID_MATCHER = /^[A-Za-z0-9-]+$/;
+export const UID_MATCHER = /^[A-Za-z0-9-]{1,64}$/;
 
 // ---------- 分页 ----------
 
 export const DEFAULT_PAGE_SIZE = 10;
-export const MAX_PAGE_SIZE = 1000;
+export const MAX_PAGE_SIZE = 50;
 
 export const decodePageToken = (token: string | undefined): { limit: number; offset: number } | null => {
   if (!token) return null;
   try {
     const parsed = JSON.parse(atob(token));
-    if (typeof parsed.limit === "number" && typeof parsed.offset === "number") return parsed;
+    if (Number.isSafeInteger(parsed.limit) && parsed.limit > 0 && Number.isSafeInteger(parsed.offset) && parsed.offset >= 0) return parsed;
   } catch {
     /* fallthrough */
   }
@@ -41,7 +41,7 @@ export const encodePageToken = (limit: number, offset: number): string => btoa(J
 
 export const resolvePage = (req: { pageSize?: number; pageToken?: string }) => {
   const fromToken = decodePageToken(req.pageToken);
-  const limit = Math.min(fromToken?.limit ?? (req.pageSize && req.pageSize > 0 ? req.pageSize : DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
+  const limit = Math.min(fromToken?.limit ?? (Number.isSafeInteger(req.pageSize) && req.pageSize! > 0 ? req.pageSize! : DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
   const offset = fromToken?.offset ?? 0;
   return { limit, offset };
 };

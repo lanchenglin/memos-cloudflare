@@ -1,24 +1,16 @@
-# 安全政策 / Security Policy
+# Security / 安全边界
 
-## 报告漏洞 / Reporting a Vulnerability
+本分支以单人私有图文记录为主要场景。保留上游开源组件，不声称经过第三方安全审计。
 
-如果你发现本项目存在安全漏洞（如认证绕过、SQL 注入、XSS 等），**请不要公开提 issue**，而是：
+- 不提供默认账号密码。首个管理员需要 SETUP_KEY，首次插入有并发保护；之后默认关闭注册。
+- 密码至少 12 字符；登录有基于 D1 的尝试次数限制。JWT_SECRET 和 SETUP_KEY 至少 32 字符，且应使用不同的随机值。
+- 前后端同源，不反射跨域凭据 CORS。写入接口用 Bearer；私有图片 GET/HEAD 可验证 HttpOnly refresh Cookie。Cookie 为 Secure、SameSite=Strict。
+- 私有图片不走公开桶 URL，不做公共缓存；附件实际字节数受限，类型按文件特征识别；图片特征识别不是杀毒或完整图片解码验证。
+- PNG/JPEG/GIF/WebP/AVIF 可以内联预览，PDF 强制下载；拒绝 SVG/HTML/其他主动内容作为附件。
+- 修改密码会撤销 refresh 会话和个人访问令牌，并通过 auth_version 使旧 access JWT 失效。退出单个会话会撤销对应 refresh token；此前签发的短期 Bearer token 可能在剩余有效期内可用，不要把退出单个会话视为所有令牌撤销。
+- R2 文件删除失败会保留 D1 删除队列，Cron 重试；这是补偿清理，不是跨 D1/R2 的原子事务。中断上传仍可能留下需要人工核对的未关联对象。
+- 不开启 R2 公共访问。PUBLIC 笔记及其图片可匿名读取，PROTECTED 可被登录用户读取；敏感内容保持 PRIVATE。
+- 原图不做 EXIF 清理，分享公开图片前自行检查定位或其他隐私元数据。文本草稿和登录信息会保存在本机浏览器；避免在不可信共享电脑长期登录。
+- 外链图片仍可能向外站发起请求；未启用端到端加密，管理员和 Cloudflare 存储权限持有者可以接触数据。
 
-- 通过 GitHub 的 [Private vulnerability reporting](https://github.com/Allhuo/memos-cloudflare/security/advisories/new) 提交
-- 或发邮件至 hitokotoop@gmail.com
-
-我们会在 72 小时内确认收到，并在修复后公开致谢（除非你希望匿名）。
-
-If you discover a security vulnerability (auth bypass, SQL injection, XSS, etc.), **please do not open a public issue**. Instead:
-
-- Use GitHub's [Private vulnerability reporting](https://github.com/Allhuo/memos-cloudflare/security/advisories/new)
-- Or email hitokotoop@gmail.com
-
-We will acknowledge within 72 hours and credit you after the fix is released (unless you prefer anonymity).
-
-## 部署安全须知 / Deployment security notes
-
-- 部署后**立即修改默认管理员密码**（admin / 123456）
-- `JWT_SECRET` 必须使用强随机值（`openssl rand -base64 32`）
-- `ALLOWED_ORIGINS` 只配置你自己的前端域名
-- 不要将包含真实 `database_id` 的 `wrangler.toml` 提交到公开仓库
+运行 `npm audit` 只是依赖检查，不代表没有未知漏洞。发现问题请避免在公开 Issue 张贴私人笔记、令牌、数据库转储或密钥；先保留必要的最小复现、撤销相关令牌，再向维护者报告。

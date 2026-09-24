@@ -12,6 +12,10 @@ export const validationService = {
       return { valid: false, reason: "Loading memo content" };
     }
 
+    if (state.metadata.attachments.length + state.localFiles.length > 20) {
+      return { valid: false, reason: "每条笔记最多 20 个附件" };
+    }
+
     // Must have content, attachment, or local file
     if (!state.content.trim() && state.metadata.attachments.length === 0 && state.localFiles.length === 0) {
       return { valid: false, reason: "Content, attachment, or file required" };

@@ -1,7 +1,7 @@
 {
   "name": "memos",
   "private": true,
-  "packageManager": "pnpm@11.0.1",
+  "packageManager": "npm@12.0.1",
   "engines": {
     "node": ">=24"
   },
@@ -14,7 +14,8 @@
     "format": "biome format --write src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
     "@connectrpc/connect": "^2.1.1",
@@ -106,5 +107,6 @@
     "typescript": "^6.0.3",
     "vite": "^8.0.11",
     "vitest": "^4.1.5"
-  }
+  },
+  "version": "0.3.0"
 }

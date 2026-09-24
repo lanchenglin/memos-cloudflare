@@ -1,128 +1,84 @@
-# Memos on Cloudflare
+# 随手记 · Memos Cloudflare Personal
 
-[![CI](https://github.com/Allhuo/memos-cloudflare/actions/workflows/ci.yml/badge.svg)](https://github.com/Allhuo/memos-cloudflare/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/Allhuo/memos-cloudflare)](https://github.com/Allhuo/memos-cloudflare/stargazers)
+**先记录，再整理。** 面向个人的图文笔记：一个 Cloudflare Worker 提供网页和接口，D1 保存正文、标签和账号，私有 R2 保存原图和 PDF。无需家里的电脑保持开机。
 
-English | [中文](README.zh-CN.md)
+> 本仓库是基于 [Allhuo/memos-cloudflare](https://github.com/Allhuo/memos-cloudflare) 的独立维护分支，不是 Memos 官方项目。保留上游许可证和 Git 历史。基线为上游提交 `2206732987025e4d988e5a091deb825c0013c8fa`，原前端对应 Memos v0.29.1。
 
-Deploy [Memos](https://github.com/usememos/memos) — the open-source, self-hosted note-taking app — entirely on Cloudflare's free tier: **Workers** (frontend + API) + **D1** (SQLite database) + **R2** (file storage). No server, no Docker, no cost for personal use.
+## 这一版可以做什么
 
-## Why this project
+| 场景 | 已实现 |
+| --- | --- |
+| 随手记录 | 中文文字、Markdown、截图粘贴、图片拖拽、图片上传、纯图片笔记 |
+| 稍后整理 | 一键添加 `#待整理`；首页全部 / 待整理 / 图片 / 置顶筛选；标签、搜索、归档 |
+| 找回内容 | 中文正文、标签、日期条件、附件文件名检索；不是图片 OCR 或语义搜索 |
+| 图片存储 | 原始文件写入私有 R2；D1 仅保存元数据和关联；不强制压缩、不改动图片内容 |
+| 访问保护 | 新笔记默认私有；同源登录和私有图片鉴权；无默认账号密码；首次建号需要 SETUP_KEY |
+| 可靠上传 | 二进制上传、实际字节数限制、服务端文件类型识别、相同上传 ID 的重试去重 |
+| 数据导出 | 网页导出 JSON / Markdown；Python 脚本导出原图 + 离线 Markdown + 校验清单 |
 
-The official Memos requires a server running Docker. This project reimplements the Memos backend as a Cloudflare Worker so you can run your personal memo service on Cloudflare's global edge — free, fast, and maintenance-free.
+**附件限制：** JPG、PNG、GIF、WebP、AVIF，兼容 PDF 下载；默认单文件 10 MiB，可通过 `UPLOAD_LIMIT_MB` 配置为 1–20 MiB；每条笔记最多 20 个附件。不接受 SVG/HTML，HEIC 请先转成 JPG。不提供图片转码、缩略图生成或去除 EXIF。
 
-- 🚀 **Serverless**: global edge deployment via Cloudflare Workers
-- 🗄️ **D1 database**: SQLite-backed distributed storage
-- 📁 **R2 storage**: file/image upload support
-- 🔐 **JWT authentication** with configurable CORS
-- 🎯 **Aligned with upstream Memos v0.29** (Connect API, client-side markdown, session auth)
+## 部署入口
 
-## Quick start
+详细操作见 **[Cloudflare 部署文档](docs/DEPLOY.md)**。首次部署需要你自己的 Cloudflare 账号、D1 数据库、R2 桶，以及两个不同的随机 Secret。
 
-Single-Worker deployment (recommended): one Worker serves both the frontend and the API — same origin, no CORS/cookie configuration.
+```text
+notes.example.com
+       ↓
+Cloudflare Worker（网页 + API + 私有图片访问）
+       ├── D1：正文 / 标签 / 时间 / 账号 / 附件关联
+       └── 私有 R2：图片 / PDF 原文件
+```
+
+这里的域名绑定在 **Worker** 上，不是公开 R2 桶。不需要在网页里填 S3 Access Key；R2 通过 Cloudflare 绑定访问。
 
 ```bash
-git clone https://github.com/Allhuo/memos-cloudflare.git
+# Node.js 24+，npm；备份脚本需要 Python 3.10+
+git clone https://github.com/lanchenglin/memos-cloudflare.git
 cd memos-cloudflare
-
-# 1. Build the frontend (the Worker serves frontend/dist as static assets)
-cd frontend
-npm install -g pnpm@11   # or: corepack enable
-pnpm install && pnpm build
-
-# 2. Create Cloudflare resources
-cd ../backend
-npm install
-npx wrangler d1 create memos             # copy the database_id into wrangler.toml
-npx wrangler r2 bucket create memos-assets
-
-# 3. Initialize the database (v2 schema, aligned with upstream v0.29)
-npx wrangler d1 execute memos --remote --file schema-v2.sql
-
-# 4. Set the JWT secret
-npx wrangler secret put JWT_SECRET       # e.g. output of: openssl rand -base64 32
-
-# 5. Deploy
-npx wrangler deploy
+npm run setup
+npm run check
+npm test
+npm run build
 ```
 
-Your instance is now live at `https://memos-cloudflare.<your-subdomain>.workers.dev`.
+不要把 `JWT_SECRET`、`SETUP_KEY`、Cloudflare API Token、个人访问令牌提交到 Git，也不需要发到聊天里。仓库中的数据库 ID 是占位符，不能直接用于生产。
 
-<details>
-<summary>Alternative: split deployment (Pages frontend + Worker API)</summary>
+## 本地运行
 
-Build the frontend with `VITE_API_BASE_URL=https://your-worker.workers.dev` and deploy `frontend/dist` to Cloudflare Pages; remove the `[assets]` section from `wrangler.toml`. Set `ALLOWED_ORIGINS` as a Worker secret to your Pages origin. Note: cross-site cookies require the browser to accept `SameSite=None` third-party cookies.
-</details>
-
-### Sign in
-
-Default account: `admin` / `123456` — **change the password immediately after first login.**
-
-## Configuration
-
-| Variable | Where | Description |
-|----------|-------|-------------|
-| `JWT_SECRET` | Worker secret | JWT signing key (required, use a strong random value) |
-| `ALLOWED_ORIGINS` | Worker secret | Comma-separated list of allowed frontend origins |
-| `VITE_API_BASE_URL` | Pages env var | Backend Worker URL for the frontend |
-
-See [SECURITY.md](SECURITY.md) for the post-deployment security checklist.
-
-## Troubleshooting
-
-<details>
-<summary><b>Frontend shows "Failed to fetch"</b></summary>
-
-CORS misconfiguration. Check that `ALLOWED_ORIGINS` contains your exact frontend origin (no trailing slash), then redeploy the Worker.
-</details>
-
-<details>
-<summary><b>Cannot log in with admin / 123456</b></summary>
-
-Reset the admin password back to `123456` (v2 schema):
+先完成上述依赖安装与构建，然后生成 **只用于本机开发** 的随机密钥：
 
 ```bash
-npx wrangler d1 execute memos --remote --command "UPDATE user SET password_hash = 'pbkdf2\$100000\$UMwJUlX+C0KYrCbG1r8H6A==\$SP5js+HSEHyvYH30GMBZIygmbqktKmorLJtdztfX72Y=' WHERE username = 'admin'"
+python3 -c 'import secrets,pathlib; p=pathlib.Path("backend/.dev.vars"); p.open("x").write("JWT_SECRET="+secrets.token_urlsafe(48)+"\nSETUP_KEY="+secrets.token_urlsafe(48)+"\n")'
+cd backend
+npm run db:migrate:local
+npm run dev
 ```
 
-(On the legacy v1 schema this issue was [#1](https://github.com/Allhuo/memos-cloudflare/issues/1); use the SHA-256 hex value from that issue instead.)
-</details>
+浏览器访问 Wrangler 输出的本机地址。首次创建管理员时，填写 `.dev.vars` 中的 `SETUP_KEY`。文件存在时上述命令不会覆盖它。测试和本地开发只使用本地 D1/R2，不会创建远程资源。
 
-<details>
-<summary><b>Database errors</b></summary>
+## 测试与数据备份
+
+`npm test` 运行后端集成测试、前端测试和备份脚本测试。后端测试使用真实 workerd 执行 Worker，模拟 D1 和 R2；不是只 Mock 数据库调用。
 
 ```bash
-npx wrangler d1 list                                          # verify the database exists
-npx wrangler d1 execute memos --remote --file schema-v2.sql   # re-run migrations
-```
-</details>
-
-## Upstream compatibility
-
-Aligned with **Memos v0.29.1**: the frontend is the upstream web app (2-file fork for Connect JSON transport + optional cross-origin API base), and the backend reimplements the Connect API on Workers/D1/R2 — including the dual-token session model, `ListMemos` CEL filters, comments, reactions, shares and link previews. A few RPCs the web UI never calls return `unimplemented`; SSO and audio transcription are untested/stubbed. Progress: [ROADMAP.md](ROADMAP.md).
-
-Migrating from the v1 (v0.24-era) schema? See [docs/migrate-v1-to-v2.md](docs/migrate-v1-to-v2.md).
-
-## Contributing
-
-Contributions of any size are welcome — bug reports, docs, translations, fixes, upstream alignment. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/Allhuo/memos-cloudflare/labels/good%20first%20issue) label, or open an issue to discuss what you'd like to work on.
-
-## Project structure
-
-```
-memos-cloudflare/
-├── backend/           # Cloudflare Worker: Connect API + static assets (Hono + D1 + R2)
-│   ├── src/v2/        # Connect JSON services (aligned with upstream v0.29)
-│   └── schema-v2.sql
-├── frontend/          # Upstream Memos v0.29.1 web app (React + Vite, 2-file fork)
-│   └── src/
-└── docs/              # Deployment & migration guides
+# 实际 Chromium 浏览器冒烟测试（不连接你的生产账户）
+cd backend
+npx playwright-core install chromium
+npm run test:browser
+# 已有 Chromium 时也可设置 CHROMIUM_PATH=/完整浏览器路径
 ```
 
-## Credits & license
+浏览器测试覆盖首次初始化、图文发布、刷新、私有图片、手机宽度和离线图文备份。CI 不自动部署生产环境；完整浏览器工作流可以在 Actions 手动运行。
 
-- Based on [Memos](https://github.com/usememos/memos) by the usememos team (MIT)
-- Started from an early version of [vividmuse/memos-cloudflare](https://github.com/vividmuse/memos-cloudflare), since heavily rewritten
+**[备份与迁移说明](docs/BACKUP.md)** 区分了三件事：网页导出、图文便携备份、D1/R2 整站灾备。不要把只有文字和图片链接的 JSON 当成完整原图备份。
 
-[MIT](LICENSE)
+## 范围与边界
+
+此版优先验收个人图文记录。上游界面中的部分高级功能仍在，但 SSO、AI、语音转写、第三方客户端和多用户协作不是这一版的完整验收范围。旧 v1 接口已经移除；不能直接套用原版 Memos 的所有 REST 示例。
+
+未保存图片仅存在当前页面，刷新前必须保存；文本草稿保存在当前浏览器，不等同云备份。R2 原图预览没有生成缩略图，大量超大图片会增加访问开销。没有启用自动 OCR、AI 自动归类、语义检索或定时整站备份。
+
+Cloudflare 套餐、资源使用量和额度决定实际成本，本项目不承诺永久免费。首次部署建议先用非重要测试记录验证自己的域名、手机访问和备份，再导入长期资料。
+
+许可证与安全说明：[LICENSE](LICENSE) · [SECURITY.md](SECURITY.md) · [版本说明](CHANGELOG.md)

@@ -1,3 +1,4 @@
+import { readLimitedBody } from "../security";
 import { Hono } from "hono";
 import type { Env } from "../types";
 import { ConnectError, internal, unauthenticated, unimplemented } from "./connect";
@@ -41,7 +42,11 @@ export function mountConnectRoutes(app: Hono<{ Bindings: Env }>) {
       }
 
       let requestBody: any = {};
-      const raw = await c.req.text();
+      if (!c.req.header("Content-Type")?.toLowerCase().startsWith("application/json")) {
+        throw new ConnectError("invalid_argument", "Content-Type must be application/json");
+      }
+      // Native image upload uses /api/attachments/upload; cap legacy base64 uploads.
+      const raw = new TextDecoder().decode(await readLimitedBody(c.req.raw, 15 * 1024 * 1024));
       if (raw) {
         try {
           requestBody = JSON.parse(raw);
@@ -50,7 +55,15 @@ export function mountConnectRoutes(app: Hono<{ Bindings: Env }>) {
         }
       }
 
+      if (!requestBody || typeof requestBody !== "object" || Array.isArray(requestBody)) {
+        throw new ConnectError("invalid_argument", "request must be a JSON object");
+      }
+      if (typeof requestBody.updateMask === "string") {
+        requestBody.updateMask = { paths: requestBody.updateMask.split(",").filter(Boolean)
+          .map((p: string) => p.replace(/[A-Z]/g, ch => `_${ch.toLowerCase()}`)) };
+      }
       const auth = await authenticate(c.req.raw, c.env);
+      if (c.req.header("Authorization") && !auth) throw unauthenticated();
       if (registration.auth === "required" && !auth) {
         throw unauthenticated();
       }
@@ -67,7 +80,7 @@ export function mountConnectRoutes(app: Hono<{ Bindings: Env }>) {
       return new Response(JSON.stringify(result ?? {}), { status: 200, headers: responseHeaders });
     } catch (err) {
       const connectErr =
-        err instanceof ConnectError ? err : internal(err instanceof Error ? err.message : "unknown error");
+        err instanceof ConnectError ? err : internal("Internal server error");
       if (!(err instanceof ConnectError)) {
         console.error(`RPC ${key} failed:`, err);
       }

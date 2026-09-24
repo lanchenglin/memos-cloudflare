@@ -1,3 +1,4 @@
+import { saveAttachment } from "../../media";
 // AttachmentService — 附件上传/列表/删除(blob 存 R2,元数据存 D1)。
 // 对齐 memos v0.29 proto/api/v1/attachment_service.proto(规格书 §2.7 / §4.3)。
 // GetAttachment / UpdateAttachment 前端未调用,不注册(router 统一回 unimplemented)。
@@ -49,71 +50,12 @@ const getAttachmentByUid = (env: Env, uid: string) =>
 // ---------- CreateAttachment ----------
 
 rpc("AttachmentService", "CreateAttachment", "required", async (request, ctx) => {
-  const auth = ctx.auth!;
-  const attachment = request.attachment;
-  if (!attachment || typeof attachment !== "object") throw invalidArgument("attachment is required");
-
-  const filename: string = attachment.filename || "";
-  if (!filename) throw invalidArgument("filename is required");
-  const mimeType: string = attachment.type || "application/octet-stream";
-  if (typeof attachment.content !== "string" || attachment.content.length === 0) {
-    throw invalidArgument("attachment content is required");
-  }
-
-  if (!ctx.env.R2) {
-    throw new ConnectError(
-      "failed_precondition",
-      "R2 bucket is not configured; bind an R2 bucket (binding name: R2) in wrangler.toml",
-    );
-  }
-
-  const bytes = decodeBase64(attachment.content);
-  const limitBytes = await getUploadSizeLimitBytes(ctx.env);
-  if (bytes.byteLength > limitBytes) {
-    throw invalidArgument(`file size exceeds the limit of ${Math.floor(limitBytes / 1024 / 1024)} MiB`);
-  }
-
-  // attachmentId 允许调用方自带 uid
-  let uid = newUid();
-  if (request.attachmentId) {
-    if (!UID_MATCHER.test(request.attachmentId)) throw invalidArgument("invalid attachmentId");
-    const existing = await ctx.env.DB.prepare("SELECT id FROM attachment WHERE uid = ?").bind(request.attachmentId).first();
-    if (existing) throw new ConnectError("already_exists", `attachment ${request.attachmentId} already exists`);
-    uid = request.attachmentId;
-  }
-
-  // 可选绑定到 memo(memos/{uid})
-  let memoId: number | null = null;
-  let memoUid: string | null = null;
-  if (attachment.memo) {
-    const parsedMemoUid = parseName(attachment.memo, "memos");
-    if (!parsedMemoUid) throw invalidArgument(`invalid memo name: ${attachment.memo}`);
-    const memoRow = await ctx.env.DB.prepare("SELECT id, uid, creator_id FROM memo WHERE uid = ?")
-      .bind(parsedMemoUid)
-      .first<{ id: number; uid: string; creator_id: number }>();
-    if (!memoRow) throw notFound(`memo ${attachment.memo} not found`);
-    if (memoRow.creator_id !== auth.userId && auth.role !== "ADMIN") {
-      throw permissionDenied("cannot attach to another user's memo");
-    }
-    memoId = memoRow.id;
-    memoUid = memoRow.uid;
-  }
-
-  const r2Key = `attachments/${uid}/${filename}`;
-  await ctx.env.R2.put(r2Key, bytes, { httpMetadata: { contentType: mimeType } });
-
-  const now = Math.floor(Date.now() / 1000);
-  await ctx.env.DB.prepare(
-    `INSERT INTO attachment (uid, creator_id, created_ts, updated_ts, filename, type, size, memo_id, storage_type, reference, payload)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'R2', ?, '{}')`,
-  )
-    .bind(uid, auth.userId, now, now, filename, mimeType, bytes.byteLength, memoId, r2Key)
-    .run();
-
-  const row = await getAttachmentByUid(ctx.env, uid);
-  if (!row) throw notFound(`attachment ${uid} not found after create`);
-  row.memo_uid = memoUid;
-  return attachmentToApi(row); // 响应不含 content
+  const attachment = request?.attachment;
+  if (!attachment || typeof attachment.content !== "string") throw invalidArgument("attachment content is required");
+  return saveAttachment(ctx.env, ctx.auth!, {
+    bytes: decodeBase64(attachment.content), filename: attachment.filename,
+    uid: request.attachmentId, memo: attachment.memo,
+  });
 });
 
 // ---------- ListAttachments ----------
@@ -177,15 +119,18 @@ const deleteAttachmentByName = async (env: Env, auth: { userId: number; role: st
   if (!row) throw notFound(`attachment ${name} not found`);
   if (row.creator_id !== auth.userId && auth.role !== "ADMIN") throw permissionDenied();
 
-  // EXTERNAL 类型不持有对象,跳过 R2 删除;R2 删除失败不阻塞行删除
-  if (row.storage_type !== "EXTERNAL" && row.reference && env.R2) {
+  const statements = [];
+  if (row.storage_type === "R2" && row.reference) {
+    statements.push(env.DB.prepare("INSERT OR IGNORE INTO r2_deletion_queue (object_key) VALUES (?)").bind(row.reference));
+  }
+  statements.push(env.DB.prepare("DELETE FROM attachment WHERE id = ?").bind(row.id));
+  await env.DB.batch(statements);
+  if (row.storage_type === "R2" && row.reference && env.R2) {
     try {
       await env.R2.delete(row.reference);
-    } catch (err) {
-      console.error(`failed to delete R2 object ${row.reference}:`, err);
-    }
+      await env.DB.prepare("DELETE FROM r2_deletion_queue WHERE object_key = ?").bind(row.reference).run();
+    } catch { console.error("Attachment removed; R2 deletion remains queued"); }
   }
-  await env.DB.prepare("DELETE FROM attachment WHERE id = ?").bind(row.id).run();
 };
 
 rpc("AttachmentService", "DeleteAttachment", "required", async (request, ctx) => {

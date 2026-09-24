@@ -1,142 +1,91 @@
-# 🚀 GitHub 自动部署指南
+# Cloudflare 部署（新实例）
 
-## 快速开始
+## 1. 准备代码和工具
 
-### 1. 运行设置脚本
-
-```bash
-chmod +x setup-github-deploy.sh
-./setup-github-deploy.sh
-```
-
-### 2. 在 GitHub 创建新仓库
-
-1. 访问 [GitHub](https://github.com/new)
-2. 仓库名称：`memos-cloudflare`
-3. 描述：`Memos migration to Cloudflare Workers + D1 + R2`
-4. 选择 Public 或 Private
-5. **不要** 初始化 README、.gitignore 或 LICENSE
-
-### 3. 推送代码到 GitHub
+需要 Node.js 24+、npm，以及可以管理 Workers、D1、R2 的 Cloudflare 账号。前后端作为同一个 Worker 部署，不拆分到不同域名。
 
 ```bash
-# 替换为您的仓库 URL
-git remote add origin https://github.com/您的用户名/memos-cloudflare.git
-git branch -M main
-git push -u origin main
+git clone https://github.com/lanchenglin/memos-cloudflare.git
+cd memos-cloudflare
+npm run setup
+npm run check
+npm test
+npm run build
+cd backend
+npx wrangler login
 ```
 
-### 4. 配置 GitHub Secrets
+## 2. 建立数据资源
 
-在您的 GitHub 仓库设置中添加以下 Secrets：
+以下命令会在你选择的 Cloudflare 账号创建远程资源，请确认账号和资源名。已有同名资源应先检查，不要直接删除重建。
 
-**Settings > Secrets and variables > Actions > New repository secret**
-
-| 名称 | 值 | 获取方式 |
-|------|----|---------| 
-| `CLOUDFLARE_API_TOKEN` | `YOUR_TOKEN` | [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) |
-| `CLOUDFLARE_ACCOUNT_ID` | `YOUR_ACCOUNT_ID` | [Cloudflare Dashboard](https://dash.cloudflare.com/) 右侧栏 |
-
-### 5. 配置 GitHub Variables
-
-**Settings > Secrets and variables > Actions > Variables tab > New repository variable**
-
-| 名称 | 值 | 说明 |
-|------|----|----|
-| `VITE_API_BASE_URL` | `https://memos.your-domain.com` | 前端访问的 API 地址 |
-
-### 6. 配置 Cloudflare Pages
-
-#### 选项 A: 自动配置（推荐）
-GitHub Actions 会自动部署到 Cloudflare Pages
-
-#### 选项 B: 手动配置
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. 选择 **Pages** > **Create a project**
-3. 连接到 GitHub > 选择您的仓库
-4. 配置构建设置：
-   - **Framework preset**: `None`
-   - **Build command**: `cd memos-main/web && pnpm install && pnpm build`
-   - **Build output directory**: `memos-main/web/dist`
-   - **Root directory**: `/`
-
-## 🎯 部署架构
-
-```
-GitHub Repository
-       ↓ (push)
-GitHub Actions
-       ↓
-   ┌─────────────────┬─────────────────┐
-   ↓                 ↓                 ↓
-Cloudflare      Cloudflare        Tests
- Workers         Pages            (lint/test)
-(后端 API)      (前端界面)
-```
-
-## 🔧 自定义域名设置
-
-### 1. Workers 域名
 ```bash
-# 设置自定义域名
-wrangler route add "api.memos.example.com/*" memos-cloudflare
+npx wrangler d1 create memos
+npx wrangler r2 bucket create memos-assets
 ```
 
-### 2. Pages 域名
-1. Pages 设置 > Custom domains
-2. 添加 `memos.example.com`
-3. 配置 DNS 记录
+将新建 D1 返回的 `database_id` 填入 `backend/wrangler.toml` 的占位符。确认 D1 绑定名为 `DB`，R2 绑定名为 `R2`，桶名与配置一致。不要使用上游作者的资源 ID。
 
-## 📋 环境变量完整列表
+**R2 保持私有：不要启用 r2.dev 公共访问，不要给桶绑定公共自定义域名，不设置公开下载地址。** 本项目通过 Worker 检查图片访问权限，公开桶会绕过这一层检查。
 
-### Workers (wrangler.toml)
+## 3. 设置两个不同的随机 Secret
+
+分别生成至少 32 字符的高随机性值，例如在本机分别运行两次 `openssl rand -hex 32`。通过命令行交互粘贴，不写进 Git、命令参数或普通 vars：
+
+```bash
+npx wrangler secret put JWT_SECRET
+npx wrangler secret put SETUP_KEY
+```
+
+`JWT_SECRET` 签名登录会话。`SETUP_KEY` 仅用于首次建立管理员；它不是管理员密码。将其保存在密码管理器中，初始化后可通过 `npx wrangler secret delete SETUP_KEY` 删除这一 Secret，现有登录不依赖它。
+
+命令可能要求先建立 Worker，按 CLI 指引创建同名空 Worker 即可。不要在 Secret 尚未配置时向公众发布可注册的旧版代码。
+
+## 4. 迁移数据库并部署
+
+```bash
+# 在 backend 目录
+npm run db:migrate:remote
+npm run build:check
+npm run deploy
+```
+
+`db:migrate:remote` 执行 `migrations/0001_v2.sql` 和 `0002_personal.sql`，迁移记录由 Wrangler 管理；日后重复执行只运行新的迁移。**不要用 schema-v2.sql 代替完整迁移目录。**
+
+此版默认面向新建数据库。已有原版 Memos 或社区旧版数据时，不要直接对旧库执行 0001，也不要删除旧库；先做 D1 和 R2 完整备份，再单独评估结构迁移。
+
+## 5. 首次初始化
+
+打开部署得到的 HTTPS 地址，页面会引导创建首个管理员。输入 SETUP_KEY、自选用户名和 12–128 字符的长密码。没有预置账号和默认密码。
+
+初始化后默认禁止开放注册。新笔记默认 PRIVATE；改成 PUBLIC 会允许匿名访问该笔记及其附件，PROTECTED 表示已登录用户可读，不等于仅自己可读。个人使用建议保持 PRIVATE。
+
+## 6. 绑定自己的域名
+
+在 Cloudflare 的该 Worker 设置中添加 Custom Domain，例如 `notes.example.com`。也可以在 `wrangler.toml` 顶层添加：
+
 ```toml
-[vars]
-LOG_LEVEL = "info"
-BASE_URL = "https://memos.example.com"
-
-# Secrets (通过 wrangler secret put 设置)
-# JWT_SECRET
-# R2_ACCOUNT_ID
-# R2_ACCESS_KEY_ID  
-# R2_SECRET_ACCESS_KEY
-# R2_BUCKET
+[[routes]]
+pattern = "notes.example.com"
+custom_domain = true
 ```
 
-### Pages (GitHub Variables)
-```env
-VITE_API_BASE_URL=https://memos.example.com
-NODE_ENV=production
-```
+域名所属区域需要由你的 Cloudflare 账号管理。绑定后重新部署，并用该域名登录。前端 API 默认为同源，不要把 `VITE_API_BASE_URL` 指到另一个域名。
 
-## 🚨 故障排除
+保留 `workers.dev` 时，它和自定义域名共享同一数据，但浏览器登录 Cookie 分属各自域名，需要分别登录。自定义域名验证成功后，可以在 Worker 设置中关闭不需要的预览入口。
 
-### 常见问题
+## 7. 上线验收
 
-1. **部署失败**: 检查 GitHub Secrets 是否正确设置
-2. **前端 404**: 确认 `_routes.json` 文件存在
-3. **API 无法访问**: 检查 CORS 配置和域名设置
-4. **权限错误**: 确认 Cloudflare API Token 权限
+创建一条文字笔记、一条纯图片笔记和一条多图笔记；用中文正文和文件名搜索。刷新后图片应仍显示，退出登录或使用无痕窗口访问私有图片应被拒绝。用手机打开域名，验证上传、预览和标签筛选。
 
-### 查看部署日志
+执行一次图文备份并校验，并另行建立 D1/R2 的灾备流程。Cron 只负责删除队列和过期登录记录清理，**不是定时备份**。
 
-- **GitHub Actions**: Repository > Actions tab
-- **Cloudflare Workers**: Wrangler CLI 或 Dashboard
-- **Cloudflare Pages**: Pages 项目 > Functions tab
+## 参数与故障检查
 
-## 🎉 验证部署
+`UPLOAD_LIMIT_MB` 默认 10，可设 1–20。修改后重新部署。文件被拒绝时先检查实际大小和格式；HEIC、SVG、HTML 不在支持范围，修改扩展名不会绕过服务端类型检查。
 
-部署完成后访问：
-- 前端：`https://memos-frontend.pages.dev` 或您的自定义域名
-- 后端：`https://memos-cloudflare.your-subdomain.workers.dev` 或您的自定义域名
+图片 401/404：确认使用同一域名、已登录、刷新 Cookie 有效、R2 绑定正确，不要为了修复显示问题把桶公开。
 
-测试 API：
-```bash
-curl https://your-api-domain.com/health
-```
+初始化 403：检查 SETUP_KEY，而不是放开注册。503：检查 JWT_SECRET 是否存在且至少 32 字符。数据库报列不存在：确认两次迁移都已完成。
 
-## 📚 更多信息
-
-- [Cloudflare Pages 文档](https://developers.cloudflare.com/pages/)
-- [Cloudflare Workers 文档](https://developers.cloudflare.com/workers/)
-- [GitHub Actions 文档](https://docs.github.com/en/actions) 
+配置验证、Miniflare 测试或浏览器本地测试通过，不等同你的 Cloudflare 账号、域名和真实 R2 已经上线验收。

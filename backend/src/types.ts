@@ -4,6 +4,8 @@
 export interface Env {
   DB: D1Database;
   JWT_SECRET: string;
+  SETUP_KEY?: string;
+  UPLOAD_LIMIT_MB?: string;
   ALLOWED_ORIGINS?: string;  // 逗号分隔的允许域名列表
   R2_ACCOUNT_ID?: string;
   R2_ACCESS_KEY_ID?: string;

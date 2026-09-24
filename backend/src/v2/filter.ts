@@ -77,6 +77,7 @@ const FIELD_SQL: Record<string, string> = {
 };
 
 const BOOL_SQL: Record<string, string> = {
+  has_image: "EXISTS (SELECT 1 FROM attachment a WHERE a.memo_id = m.id AND a.type LIKE 'image/%')",
   pinned: "m.pinned = 1",
   has_task_list: "json_extract(m.payload, '$.property.hasTaskList') = 1",
   has_link: "json_extract(m.payload, '$.property.hasLink') = 1",
@@ -93,7 +94,9 @@ export class FilterParser {
   readonly params: unknown[] = [];
 
   constructor(filter: string) {
+    if (filter.length > 4096) throw invalidArgument("filter is too long");
     this.tokens = tokenize(filter);
+    if (this.tokens.length > 256) throw invalidArgument("filter is too complex");
   }
 
   private peek(): Token | undefined {
@@ -172,8 +175,9 @@ export class FilterParser {
       if (arg.kind !== "string") throw invalidArgument("filter: contains() expects a string");
       this.expectOp(")");
       if (field !== "content") throw invalidArgument(`filter: ${field}.contains() not supported`);
-      this.params.push(`%${escapeLike(arg.value)}%`);
-      return `m.content LIKE ? ESCAPE '\\'`;
+      const pattern = `%${escapeLike(arg.value)}%`;
+      this.params.push(pattern, pattern);
+      return `(m.content LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM attachment a WHERE a.memo_id = m.id AND a.filename LIKE ? ESCAPE '\\'))`;
     }
 
     // tag in ["a","b"] / visibility in [...]

@@ -11,7 +11,7 @@ export default defineConfig({
     // Keep in sync with the `@/` alias declared in `vite.config.mts` so that
     // test-time module resolution matches production/build.
     alias: {
-      "@/": `${resolve(__dirname, "src")}/`,
+      "@/": `${resolve(import.meta.dirname, "src")}/`,
     },
   },
   test: {

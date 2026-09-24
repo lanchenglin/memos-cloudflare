@@ -1,0 +1,3 @@
+# Copy to .dev.vars, then replace BOTH values with different random strings.
+JWT_SECRET="replace-with-at-least-32-random-characters"
+SETUP_KEY="replace-with-a-different-32-character-secret"

@@ -10,7 +10,7 @@ build/
 # Wrangler
 .wrangler/
 wrangler.toml.backup
-backend/wrangler.toml  # 包含敏感配置信息，使用wrangler.toml.example作为模板
+# wrangler.toml is tracked with placeholders only. Real secrets belong in .dev.vars / Worker Secrets.
 
 # Environment variables
 .env
@@ -83,3 +83,11 @@ docs/temp/
 # Editor files
 .cursor/
 .vscode/
+
+# Local reports / portable user data
+test-results/
+backups/
+__pycache__/
+*.pyc
+.dev.vars.*
+!.dev.vars.example

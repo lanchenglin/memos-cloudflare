@@ -52,7 +52,7 @@ export function isTagElement(node: HastElement): boolean {
     return true;
   }
 
-  const className = node.properties?.className;
+  const className: unknown = node.properties?.className;
   if (Array.isArray(className) && className.includes("tag")) {
     return true;
   }
@@ -73,7 +73,7 @@ export function isMentionElement(node: HastElement): boolean {
     return true;
   }
 
-  const className = node.properties?.className;
+  const className: unknown = node.properties?.className;
   if (Array.isArray(className) && className.includes("mention")) {
     return true;
   }

@@ -24,7 +24,7 @@ import { parseMemoFilter } from "../filter";
 const nowSec = () => Math.floor(Date.now() / 1000);
 
 const VISIBILITIES = new Set(["PRIVATE", "PROTECTED", "PUBLIC"]);
-const DEFAULT_CONTENT_LENGTH_LIMIT = 8192;
+const DEFAULT_CONTENT_LENGTH_LIMIT = 32768;
 
 // ---------- 通用辅助 ----------
 
@@ -83,6 +83,14 @@ const attachmentUids = (attachments: unknown): string[] => {
 
 /** 全量重设 memo 的附件绑定：先解绑全部，再绑定列表中属于 caller 的附件 */
 const rebindAttachments = async (env: Env, memoId: number, callerId: number, uids: string[]): Promise<void> => {
+  if (uids.length > 20 || new Set(uids).size !== uids.length) throw invalidArgument("每条笔记最多 20 张附件，不能重复引用");
+  if (uids.length) {
+    const found = await env.DB.prepare(`SELECT uid, creator_id, memo_id FROM attachment WHERE uid IN (${uids.map(() => "?").join(",")})`)
+      .bind(...uids).all<{uid: string; creator_id: number; memo_id: number | null}>();
+    if (found.results.length !== uids.length || found.results.some(a => a.creator_id !== callerId || (a.memo_id !== null && a.memo_id !== memoId))) {
+      throw permissionDenied("附件不存在、不属于你，或已被另一条笔记使用；请重新上传");
+    }
+  }
   const stmts = [env.DB.prepare("UPDATE attachment SET memo_id = NULL WHERE memo_id = ?").bind(memoId)];
   if (uids.length > 0) {
     const ph = uids.map(() => "?").join(",");
@@ -200,11 +208,15 @@ const insertMemo = async (env: Env, auth: AuthContext, input: CreateMemoInput): 
 
   const row = await getMemoOrThrow(env, uid);
 
-  const uids = attachmentUids(memo.attachments);
-  if (uids.length > 0) await rebindAttachments(env, row.id, auth.userId, uids);
-
-  const relUids = referenceRelationUids(memo.relations);
-  if (relUids.length > 0) await resetReferenceRelations(env, row.id, relUids);
+  try {
+    const uids = attachmentUids(memo.attachments);
+    if (uids.length > 0) await rebindAttachments(env, row.id, auth.userId, uids);
+    const relUids = referenceRelationUids(memo.relations);
+    if (relUids.length > 0) await resetReferenceRelations(env, row.id, relUids);
+  } catch (error) {
+    await env.DB.prepare("DELETE FROM memo WHERE id = ?").bind(row.id).run();
+    throw error;
+  }
 
   return row;
 };
@@ -323,7 +335,7 @@ rpc("MemoService", "UpdateMemo", "required", async (req, ctx) => {
         break;
       }
       case "update_time": {
-        const ts = fromTimestamp(memo.updateTime);
+        const ts = memo.updateTime ? fromTimestamp(memo.updateTime) : nowSec();
         if (ts == null) throw invalidArgument("invalid update_time");
         sets.push("updated_ts = ?");
         params.push(ts);

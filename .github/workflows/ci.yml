@@ -1,43 +1,31 @@
-name: CI
-
+name: Build and test
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
-  backend:
-    name: Backend type check
+  check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-          cache-dependency-path: backend/package-lock.json
-      - run: npm ci
-        working-directory: backend
-      - run: npx tsc --noEmit
-        working-directory: backend
-
-  frontend:
-    name: Frontend build & test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - uses: actions/setup-python@v5
         with:
-          version: 11
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: frontend
-      - run: pnpm test
-        working-directory: frontend
-      - run: pnpm build
-        working-directory: frontend
+          python-version: '3.11'
+      - run: npm run setup
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:check --prefix backend
+      - run: npm audit --omit=dev --prefix backend && npm audit --omit=dev --prefix frontend
