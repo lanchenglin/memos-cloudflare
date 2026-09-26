@@ -10,6 +10,8 @@
 - 导出与灾备：`docs/BACKUP.md`。
 - 已执行的开发测试范围：`docs/TEST_REPORT.md`。
 - 安全要求：`SECURITY.md`。
+- 项目来源与许可：`THIRD_PARTY_NOTICES.md` 和 `third_party/licenses/README.md`。
+- 对外分享：`docs/SHARING.md`。
 
 ## 工作范围
 
@@ -39,3 +41,11 @@
 报告实际 Git SHA、Worker 最终版本、访问地址、账号用户名、密码安全保存位置、逐项 PASS/FAIL/NOT_RUN 和剩余问题。没有真实验证不报成功，不改写历史测试报告冒充生产验收。
 
 旧 Pages/前后端分离文档不适用于本版。接口以当前源码为准；CLI 参数先核对项目安装版本的 `--help`。
+
+## 来源、许可与对外介绍
+
+本仓库由 lanchenglin 维护，直接基于 Allhuo/memos-cloudflare，原项目为 Memos；不是从零原创或官方发行版。不要把上游已有功能写成本分支原创，不把来源声明改成官方背书。
+
+保留根目录 LICENSE、已有版权头及 `third_party/licenses/` 中的许可证原文。修改来源说明时核对实际版本和文件，不凭空补作者或年份；新增第三方代码/资源时记录适用许可。完整说明在 `THIRD_PARTY_NOTICES.md`，它不构成全部依赖的授权审计。
+
+仅修改署名、许可副本或分享文档不需要改应用版本、重置 Secret、操作 Cloudflare 或重新部署生产服务。

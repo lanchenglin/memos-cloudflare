@@ -1,5 +1,13 @@
 # Changelog
 
+## 文档与来源声明更新 — 2026-09-26
+
+- README 明确由 lanchenglin 维护的非官方二开定位，列明 Memos、直接基线 Allhuo/memos-cloudflare，以及继承的 vividmuse 历史来源声明。
+- 新增 THIRD_PARTY_NOTICES.md，区分上游能力、本分支改进、许可证保存方式与未覆盖的全量依赖审计范围。
+- 保持根目录 LICENSE 原文不变，另存 Memos v0.29.1 与 Allhuo 固定基线的原始许可证，并记录来源提交、Git blob 和 SHA-256 校验值。
+- 新增对外分享说明，补齐中文入口、AI 项目入口，并把贡献指南中的分支问题入口改为本仓库。
+- 保留已有 Hermes 部署任务书与日常使用手册。本次不修改业务代码、依赖、数据库迁移、生产配置或应用版本，不代表新增生产验收。
+
 ## 0.3.0 — 2026-09-24
 
 基于 Allhuo/memos-cloudflare 的个人图文分支。保留原 Git 历史及许可证。

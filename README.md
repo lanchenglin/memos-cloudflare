@@ -2,7 +2,35 @@
 
 **先记录，再整理。** 面向个人的图文笔记：一个 Cloudflare Worker 提供网页和接口，D1 保存正文、标签和账号，私有 R2 保存原图和 PDF。无需家里的电脑保持开机。
 
-> 本仓库是基于 [Allhuo/memos-cloudflare](https://github.com/Allhuo/memos-cloudflare) 的独立维护分支，不是 Memos 官方项目。保留上游许可证和 Git 历史。基线为上游提交 `2206732987025e4d988e5a091deb825c0013c8fa`，原前端对应 Memos v0.29.1。
+> **基于开源 Memos Cloudflare 移植版二次开发的个人图文增强分支。** 本仓库独立维护，不是 Memos 官方项目。
+> 直接基于 [Allhuo/memos-cloudflare](https://github.com/Allhuo/memos-cloudflare)，原始项目为 [usememos/memos](https://github.com/usememos/memos)。沿用上游的 Cloudflare 移植架构，并针对个人记录、整理、私有图片和备份做增强。
+>
+> **本二开分支维护者：** [lanchenglin](https://github.com/lanchenglin) · **许可：** [MIT](LICENSE) · **来源与声明：** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+
+## 项目来源与致谢
+
+感谢 Memos、Allhuo 及其他上游贡献者提供的基础工作。本仓库保留直接上游 Git 历史、原有版权与许可声明，不将上游已有能力标为本分支原创。
+
+| 来源 | 与本仓库的关系 |
+| --- | --- |
+| [usememos/memos](https://github.com/usememos/memos) | 原始 Memos 项目；本移植基线的前端对应 v0.29.1。已另存该版本的[原始 MIT 许可证](third_party/licenses/memos-v0.29.1-LICENSE.txt)。 |
+| [Allhuo/memos-cloudflare](https://github.com/Allhuo/memos-cloudflare) | 直接二开基础，提供 Workers + D1 + R2 移植。固定基线为 [`2206732`](https://github.com/Allhuo/memos-cloudflare/commit/2206732987025e4d988e5a091deb825c0013c8fa)。 |
+| [vividmuse/memos-cloudflare](https://github.com/vividmuse/memos-cloudflare) | 直接上游许可证中记载的历史来源；保留该声明，不据此推断未经核验的具体继承顺序。 |
+
+完整的来源说明、许可证副本和校验信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [许可证索引](third_party/licenses/README.md)。
+
+## 与上游相比，这个分支改了什么？
+
+**Memos 的笔记基础能力，以及 Cloudflare 移植本身来自上游。** 本分支侧重以下改进，具体记录见 [CHANGELOG.md](CHANGELOG.md)：
+
+| 方向 | 本分支的改动 |
+| --- | --- |
+| 随手记与稍后整理 | 更直接的图片上传入口，一键添加 `#待整理`，首页待整理 / 图片 / 置顶快捷筛选，补充附件文件名检索。 |
+| 图文上传与访问 | 原始二进制上传、上传 ID 重试去重、实际字节数与格式校验、私有图片的浏览器会话访问修复。 |
+| 初始化与可靠性 | 移除预置弱密码和旧 v1 路由，增加 SETUP_KEY 首次建号保护、默认关闭注册、登录限流与 R2 删除补偿队列，修复更新字段格式等问题。 |
+| 导出与交付 | 个人存储统计、JSON / Markdown 导出、包含原图的便携备份和校验，补充测试、中文使用手册及 Hermes 部署任务书。 |
+
+上表是分支差异摘要，不表示每个基础组件都由本维护者原创；测试范围见 [测试记录](docs/TEST_REPORT.md)，每个实际部署仍需独立验收。
 
 ## 文档入口
 
@@ -13,6 +41,8 @@
 | 自己操作 Cloudflare 部署 | [人工部署说明](docs/DEPLOY.md) |
 | 下载原图、校验备份、规划整站恢复 | [备份与迁移说明](docs/BACKUP.md) |
 | AI 进入项目时的约定 | [AGENTS.md](AGENTS.md) |
+| 了解来源、许可证和二开边界 | [来源与许可声明](THIRD_PARTY_NOTICES.md) |
+| 对外分享项目、复制介绍文案 | [项目分享说明](docs/SHARING.md) |
 
 可以直接把这段发给已有部署权限的 Hermes：
 
@@ -105,4 +135,10 @@ npm run test:browser
 
 Cloudflare 套餐、资源使用量和额度决定实际成本，本项目不承诺永久免费。首次部署建议先用非重要测试记录验证自己的域名、手机访问和备份，再导入长期资料。
 
-许可证与安全说明：[LICENSE](LICENSE) · [SECURITY.md](SECURITY.md) · [版本说明](CHANGELOG.md)
+## 许可证与分支维护
+
+本仓库沿用 [MIT 许可证](LICENSE)。分发包含上游代码的副本时，请保留适用的版权和许可声明；本仓库同时提供了对应来源的[许可证原文副本](third_party/licenses/README.md)。第三方依赖与资源仍适用各自许可证，此处不是整个依赖树的完整许可审计。
+
+维护者署名指本二开分支，不替代上游作者署名，不表示获得 Memos、Allhuo 或 Cloudflare 的官方背书。此分支问题请提交到[本仓库 Issues](https://github.com/lanchenglin/memos-cloudflare/issues)，不要默认要求上游为分支改动负责。
+
+[来源与许可声明](THIRD_PARTY_NOTICES.md) · [贡献指南](CONTRIBUTING.md) · [分享文案](docs/SHARING.md) · [安全说明](SECURITY.md) · [版本说明](CHANGELOG.md)
