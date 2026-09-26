@@ -12,6 +12,7 @@
     "test": "npm test --prefix backend && npm test --prefix frontend && python3 -m unittest discover -s scripts/tests",
     "test:browser": "npm run test:browser --prefix backend",
     "preview": "npm run dev --prefix backend",
-    "deploy": "npm run build && npm run deploy --prefix backend"
+    "deploy": "npm run build && npm run deploy --prefix backend",
+    "test:mobile": "npm run test:mobile --prefix frontend"
   }
 }

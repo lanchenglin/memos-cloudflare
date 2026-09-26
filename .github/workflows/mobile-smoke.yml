@@ -1,0 +1,29 @@
+name: Mobile preview checks (manual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm run setup
+      - run: npx playwright-core install --with-deps ${{ matrix.browser }}
+        working-directory: backend
+      - run: npm run test:mobile
+        env:
+          MOBILE_BROWSER: ${{ matrix.browser }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-preview-${{ matrix.browser }}
+          path: test-results/

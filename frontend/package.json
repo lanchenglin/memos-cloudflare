@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "type-check": "tsc --noEmit --skipLibCheck"
+    "type-check": "tsc --noEmit --skipLibCheck",
+    "test:mobile": "node tests/mobile-browser.mjs"
   },
   "dependencies": {
     "@connectrpc/connect": "^2.1.1",
