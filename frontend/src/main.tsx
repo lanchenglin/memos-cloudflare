@@ -12,46 +12,28 @@ import { refreshAccessToken } from "@/connect";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { InstanceProvider, useInstance } from "@/contexts/InstanceContext";
 import { ViewProvider } from "@/contexts/ViewContext";
-import { useLiveMemoRefresh } from "@/hooks/useLiveMemoRefresh";
 import { useTokenRefreshOnFocus } from "@/hooks/useTokenRefreshOnFocus";
 import { queryClient } from "@/lib/query-client";
 import router from "./router";
 import { applyLocaleEarly } from "./utils/i18n";
 import { applyThemeEarly } from "./utils/theme";
 
-// Apply theme and locale early to prevent flash
 applyThemeEarly();
 applyLocaleEarly();
 
-// Inner component that initializes contexts
 function AppInitializer({ children }: { children: React.ReactNode }) {
   const { isInitialized: authInitialized, initialize: initAuth, currentUser } = useAuth();
   const { isInitialized: instanceInitialized, initialize: initInstance } = useInstance();
   const initStartedRef = useRef(false);
-
-  // Initialize on mount - run in parallel for better performance
   useEffect(() => {
     if (initStartedRef.current) return;
     initStartedRef.current = true;
-
-    const init = async () => {
-      await Promise.all([initInstance(), initAuth()]);
-    };
-    init();
+    void Promise.all([initInstance(), initAuth()]);
   }, [initAuth, initInstance]);
 
-  // Proactively refresh token on window focus to prevent 401 errors
-  // Only enabled when user is authenticated
-  // Related: https://github.com/usememos/memos/issues/5589
   useTokenRefreshOnFocus(refreshAccessToken, !!currentUser);
-
-  // Live refresh: listen for memo changes via SSE and invalidate caches.
-  useLiveMemoRefresh();
-
-  if (!authInitialized || !instanceInitialized) {
-    return null;
-  }
-
+  // ywdj uses its own query refresh. Do not reconnect the retired personal-memo SSE endpoint.
+  if (!authInitialized || !instanceInitialized) return null;
   return <>{children}</>;
 }
 

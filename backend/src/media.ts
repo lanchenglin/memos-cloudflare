@@ -8,7 +8,7 @@ export function uploadLimit(env: Env): number {
   return (Number.isFinite(configured) ? Math.min(20, Math.max(1, configured)) : 10) * 1024 * 1024;
 }
 
-function detectedType(bytes: Uint8Array): string {
+export function detectedType(bytes: Uint8Array): string {
   const prefix = Array.from(bytes.slice(0, 12), b => String.fromCharCode(b)).join("");
   if (bytes.length >= 24 && [137,80,78,71,13,10,26,10].every((n,i) => bytes[i] === n)) return "image/png";
   if (bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "image/jpeg";

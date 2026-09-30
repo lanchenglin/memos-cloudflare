@@ -1,4 +1,4 @@
-name = "memos-cloudflare"
+name = "memos-ywdj"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
@@ -6,6 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 BASE_URL = ""
 UPLOAD_LIMIT_MB = "10"
+AUDIT_TIMEZONE = "Asia/Shanghai"
 
 [assets]
 directory = "../frontend/dist"
@@ -15,21 +16,21 @@ run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"
-database_name = "memos"
-# Replace with YOUR database ID from `npx wrangler d1 create memos`.
+database_name = "memos-ywdj"
+# Replace with YOUR database ID from `npx wrangler d1 create memos-ywdj`.
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "memos-assets"
+bucket_name = "memos-ywdj-assets"
 
 [triggers]
 crons = ["15 19 * * *"]
 
 # Optional custom domain. The zone must be managed in your Cloudflare account.
 # [[routes]]
-# pattern = "notes.example.com"
+# pattern = "audit.example.com"
 # custom_domain = true
 
 # Required secrets, never commit values:

@@ -1,3 +1,5 @@
+> **ywdj 分支提示：本页是保留的个人版参考，不适用于运维登记版的部署/备份命令。请使用 [YWDJ_DEPLOY.md](YWDJ_DEPLOY.md)。审计备份脚本为 `scripts/audit_backup.py`。**
+
 # 导出、备份和迁移
 
 ## 网页导出

@@ -34,7 +34,7 @@ async function upload(id = "image-primary", bytes: Buffer = PNG, headers = owner
 const fileUrl = (a = attachment) => `https://notes.test/file/${a.name}/${encodeURIComponent(a.filename)}`;
 
 beforeAll(async () => {
-  const bundled = await build({entryPoints:["src/index.ts"], bundle:true, format:"esm", platform:"browser", target:"es2022", write:false});
+  const bundled = await build({entryPoints:["tests/fixtures/personal-worker.ts"], bundle:true, format:"esm", platform:"browser", target:"es2022", write:false});
   mf = new Miniflare(convertV4MiniflareOptions({ workers: [{ name:"memos-test", modules:true, script:bundled.outputFiles[0].text,
     compatibilityDate:"2026-09-01", compatibilityFlags:["nodejs_compat"],
     d1Databases:{DB:"test-database"}, r2Buckets:{R2:"test-bucket"},

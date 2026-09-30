@@ -7,6 +7,7 @@ import { authenticate, type AuthContext } from "./auth";
 // 每个 RPC handler 收到解析后的请求 JSON 与上下文，返回响应 JSON。
 export interface RpcContext {
   env: Env;
+  auditEdition: boolean;
   req: Request;
   auth: AuthContext | null;
   /** 响应上的 Set-Cookie 等额外头，由 handler 按需写入 */
@@ -29,7 +30,7 @@ export function rpc(service: string, method: string, auth: AuthPolicy, handler: 
 }
 
 /** 挂载 Connect JSON 路由。所有 RPC 都是 POST /memos.api.v1.<Service>/<Method> */
-export function mountConnectRoutes(app: Hono<{ Bindings: Env }>) {
+export function mountConnectRoutes(app: Hono<{ Bindings: Env }>, auditEdition = false) {
   // 路径形如 /memos.api.v1.MemoService/ListMemos。“.”不是段分隔符，
   // Hono 段内不支持静态前缀混写，这里用段内正则参数匹配整个 service 全名。
   app.post("/:service{memos\\.api\\.v1\\.[A-Za-z]+}/:method", async (c) => {
@@ -71,6 +72,7 @@ export function mountConnectRoutes(app: Hono<{ Bindings: Env }>) {
       const responseHeaders = new Headers();
       const result = await registration.handler(requestBody, {
         env: c.env,
+        auditEdition,
         req: c.req.raw,
         auth,
         responseHeaders,

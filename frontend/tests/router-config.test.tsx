@@ -52,14 +52,14 @@ describe("router configuration", () => {
   });
 
   it("wraps authenticated-only pages in RequireAuthRoute", () => {
-    for (const path of [ROUTES.ARCHIVED, ROUTES.ATTACHMENTS, ROUTES.INBOX, ROUTES.SETTING]) {
+    for (const path of ["audit", "home", "setting", "*"]) {
       expect(hasAncestorOfType(routeConfig, path, RequireAuthRoute)).toBe(true);
     }
   });
 
-  it("leaves public pages outside RequireAuthRoute", () => {
+  it("does not mount the old public and mutable personal-note pages in ywdj", () => {
     for (const path of [ROUTES.ABOUT, ROUTES.EXPLORE, "memos/:uid", "memos/shares/:token", "u/:username"]) {
-      expect(hasAncestorOfType(routeConfig, path, RequireAuthRoute)).toBe(false);
+      expect(findByPath(routeConfig, path)).toBeUndefined();
     }
   });
 

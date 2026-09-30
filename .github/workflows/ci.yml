@@ -1,9 +1,9 @@
 name: Build and test
 on:
   push:
-    branches: [main]
+    branches: [main, ywdj]
   pull_request:
-    branches: [main]
+    branches: [main, ywdj]
   workflow_dispatch:
 permissions:
   contents: read

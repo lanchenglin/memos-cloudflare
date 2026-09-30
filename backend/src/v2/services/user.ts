@@ -1,3 +1,4 @@
+import { logStatement } from "../../audit/core";
 // UserService（memos.api.v1.UserService）— 规格见 claude-oss-plan/4-v029-api-spec.md §2.5/§4.2/§4.6/§4.7
 // 公开方法（§1.9 白名单）：CreateUser / GetUser / BatchGetUsers / GetUserStats / ListAllUserStats → "optional"
 // 其余方法 → "required"
@@ -140,6 +141,7 @@ rpc("UserService", "CreateUser", "optional", async (req, ctx) => {
   } else if (isAdmin(ctx.auth)) {
     if (user.role === "ADMIN" || user.role === "USER") role = user.role;
   } else {
+    if (ctx.auditEdition) throw permissionDenied("运维登记版只能由管理员添加成员，不开放注册");
     const general = await getInstanceGeneralSetting(ctx.env);
     if (general.disallowUserRegistration !== false) throw permissionDenied("user registration is not allowed");
     if (general.disallowPasswordAuth) throw permissionDenied("password authentication is not allowed");
@@ -168,10 +170,13 @@ rpc("UserService", "CreateUser", "optional", async (req, ctx) => {
   }
 
   const passwordHash = await hashPassword(user.password);
-  const inserted = await ctx.env.DB.prepare(
+  const insertStatement = ctx.env.DB.prepare(
     `INSERT INTO user (created_ts, updated_ts, row_status, username, role, email, nickname, password_hash, avatar_url, description)
      SELECT ?, ?, 'NORMAL', ?, ?, ?, ?, ?, '', '' ${isFirstUser ? "WHERE NOT EXISTS (SELECT 1 FROM user)" : ""}`,
-  ).bind(now, now, username, role, email, nickname, passwordHash).run();
+  ).bind(now, now, username, role, email, nickname, passwordHash);
+  const inserted = ctx.auditEdition
+    ? (await ctx.env.DB.batch([insertStatement, logStatement(ctx.env, ctx.auth, "CREATE_USER", `users/${username}`, { role }, "SUCCESS", true)]))[0]
+    : await insertStatement.run();
   if (inserted.meta.changes !== 1) throw new ConnectError("already_exists", "实例已经初始化，请登录");
 
   const created = await getUserByUsername(ctx.env, username);
@@ -192,6 +197,9 @@ rpc("UserService", "UpdateUser", "required", async (req, ctx) => {
   const sets: string[] = [];
   const params: unknown[] = [];
   const user = req.user ?? {};
+  const disablingAdmin = target.role === "ADMIN" && target.row_status === "NORMAL" &&
+    ((paths.includes("state") && user.state === "ARCHIVED") || (paths.includes("role") && user.role !== "ADMIN"));
+  if (ctx.auditEdition && disablingAdmin && target.id === auth.userId) throw invalidArgument("不能停用或降级当前登录管理员");
 
   for (const path of paths) {
     switch (path) {
@@ -252,14 +260,19 @@ rpc("UserService", "UpdateUser", "required", async (req, ctx) => {
   const now = Math.floor(Date.now() / 1000);
   sets.push("updated_ts = ?");
   params.push(now);
-  const changingPassword = paths.includes("password");
+  const changingPassword = paths.includes("password") || (ctx.auditEdition && (paths.includes("state") || paths.includes("role")));
   if (changingPassword) sets.push("auth_version = auth_version + 1");
-  const statements = [ctx.env.DB.prepare(`UPDATE user SET ${sets.join(", ")} WHERE id = ?`).bind(...params, target.id)];
+  const adminGuard = ctx.auditEdition && disablingAdmin ? " AND (SELECT COUNT(*) FROM user WHERE role = 'ADMIN' AND row_status = 'NORMAL') > 1" : "";
+  const statements = [ctx.env.DB.prepare(`UPDATE user SET ${sets.join(", ")} WHERE id = ?${adminGuard}`).bind(...params, target.id)];
+  if (ctx.auditEdition) statements.push(logStatement(ctx.env, auth, "UPDATE_USER", `users/${target.username}`,
+    { fields: paths, previousRole: target.role, newRole: paths.includes("role") ? user.role : target.role,
+      previousState: target.row_status, newState: paths.includes("state") ? user.state : target.row_status }, "SUCCESS", true));
   if (changingPassword) {
     statements.push(ctx.env.DB.prepare("DELETE FROM refresh_token WHERE user_id = ?").bind(target.id));
     statements.push(ctx.env.DB.prepare("DELETE FROM personal_access_token WHERE user_id = ?").bind(target.id));
   }
-  await ctx.env.DB.batch(statements);
+  const results = await ctx.env.DB.batch(statements);
+  if (results[0].meta.changes !== 1) throw invalidArgument("必须保留至少一名启用的管理员");
 
   const updated = await ctx.env.DB.prepare("SELECT * FROM user WHERE id = ?").bind(target.id).first<UserRow>();
   if (!updated) throw new ConnectError("internal", "failed to update user");

@@ -1,3 +1,17 @@
+# ywdj 分支优先约定
+
+本分支是用户明确要求的 `ywdj` 运维登记版；main 仍是个人笔记版。
+优先阅读 `docs/YWDJ_REQUIREMENTS.md`、`docs/YWDJ_DEPLOY.md` 和 `docs/YWDJ_TEST_REPORT.md`。
+只做应用侧的权限和追加式记录；不扩展到数据库管理员权限或云保留锁。
+正式入口 `backend/src/index.ts` 固定启用审计规则，不能部署 `tests/fixtures/personal-worker.ts`。
+所有正式正文、登记时间、身份快照和证据都不可通过应用覆盖或删除；更正/作废必须新增记录。
+测试与实现仍保持单 Worker + D1 + 私有 R2。任何生产部署须用户明确要求，并独立于原个人笔记站点。
+不要将 ywdj 合并到 main，不强推，不改现有生产配置/数据。本地与生产验收必须分开说明。
+网页 JSON 不是原图备份，使用 `scripts/audit_backup.py`；它不是全站 D1/R2 灾备或自动恢复。
+下方是保留的共同架构/来源规则；其中个人版文档入口和功能描述不覆盖上面的分支专用约定。
+
+---
+
 # Agent 项目入口
 
 本仓库是 `lanchenglin/memos-cloudflare`，面向个人的图文笔记，当前文档基线为 0.3.0。

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:migrate:local": "wrangler d1 migrations apply memos --local",
-    "db:migrate:remote": "wrangler d1 migrations apply memos --remote",
+    "db:migrate:local": "wrangler d1 migrations apply memos-ywdj --local",
+    "db:migrate:remote": "wrangler d1 migrations apply memos-ywdj --remote",
     "test": "vitest run",
     "type-check": "tsc --noEmit",
     "build:check": "wrangler deploy --dry-run --outdir dist",

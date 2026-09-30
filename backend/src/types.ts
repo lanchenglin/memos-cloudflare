@@ -3,6 +3,7 @@
 // 环境变量类型定义
 export interface Env {
   DB: D1Database;
+  AUDIT_TIMEZONE?: string;
   JWT_SECRET: string;
   SETUP_KEY?: string;
   UPLOAD_LIMIT_MB?: string;
